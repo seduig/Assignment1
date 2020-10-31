@@ -7,7 +7,7 @@ import numpy as np
 
 from nav_msgs.msg import Odometry
 
-from util import rotateQuaternion, getHeading
+from util import rotateQuaternion, getHeading, multiply_quaternions
 from random import random
 
 
@@ -18,7 +18,7 @@ def find_weighted_random(sd): #use approximate normal to generate random number
 	#takes standard deviation as input, returns a value from between -3 standard deviations
 	#and 3 standard deviations chosen at random with proabability weighted using
 	#expression for normal distribution
-	values = np.arange(-3*sd,3.1*sd,sd/10.0)
+	values = np.arange(-3*sd,3*sd,sd/10.0)
 	weights = [0]*len(values)
 	sum_weights = 0
 	for t in range(0,len(values)):
@@ -40,8 +40,8 @@ class PFLocaliser(PFLocaliserBase):
         
         # ----- Set motion model parameters
 	self.ODOM_ROTATION_NOISE = 0.05 # Odometry model rotation noise
-	self.ODOM_TRANSLATION_NOISE = 0.25 # Odometry model x axis (forward) noise
-	self.ODOM_DRIFT_NOISE = 0.25 # Odometry model y axis (side-to-side) noise
+	self.ODOM_TRANSLATION_NOISE = 0.2 # Odometry model x axis (forward) noise
+	self.ODOM_DRIFT_NOISE = 0.2 # Odometry model y axis (side-to-side) noise
 
         # ----- Sensor model parameters
         self.NUMBER_PREDICTED_READINGS = 20     # Number of readings to predict
@@ -97,10 +97,9 @@ class PFLocaliser(PFLocaliserBase):
 	for i in range(0,len(self.particlecloud.poses)):
 
 		probs[i] = self.sensor_model.get_weight(scan,self.particlecloud.poses[i])
-		#this line causes crash, can replace with line below to continue
-		#but naturally particle cloud wont actually update as it should
-#		probs[i] = 0.4
-
+#		print(probs[i])
+#	print(probs)
+#	print(float(sum(probs))/float(len(probs)))
 	for i in range(0,len(self.particlecloud.poses)):
 		benchmark = random()*sum(probs)
 		j = 0
@@ -109,11 +108,13 @@ class PFLocaliser(PFLocaliserBase):
 			j = j + probs[k]
 			k = k + 1
 		chosenpose = self.particlecloud.poses[k-1]
+#		print(k-1)
+#		print(probs[k-1])
 		new_particle = Odometry().pose.pose
 
-		xnoise = find_weighted_random(self.ODOM_TRANSLATION_NOISE)
-		ynoise = find_weighted_random(self.ODOM_DRIFT_NOISE)
-		znoise = find_weighted_random(self.ODOM_ROTATION_NOISE)
+		xnoise = find_weighted_random(0.01)
+		ynoise = find_weighted_random(0.01)
+		znoise = find_weighted_random(0.01)
 
 		new_particle.position.x = chosenpose.position.x + xnoise
 		new_particle.position.y = chosenpose.position.y + ynoise
@@ -139,21 +140,57 @@ class PFLocaliser(PFLocaliserBase):
         :Return:
             | (geometry_msgs.msg.Pose) robot's estimated pose.
          """
-	#this is very basic and needs a lot of improvement
+
 	xsum = 0.0
 	ysum = 0.0
-	zsum = 0.0
+	sinsum = 0.0
+	cossum = 0.0
+
+	xmin = min(i.position.x for i in self.particlecloud.poses)
+	xmax = max(i.position.x for i in self.particlecloud.poses)
+	xrng = xmax - xmin
+	ymin = min(i.position.y for i in self.particlecloud.poses)
+	ymax = max(i.position.y for i in self.particlecloud.poses)
+	yrng = ymax - ymin
+#	zmin = min(i.orientation.z for i in self.particlecloud.poses)
+#	zmax = max(i.orientation.z for i in self.particlecloud.poses)
+#	zrng = zmax - zmin
+
+	valids = 0
 
 	for i in self.particlecloud.poses:
-		xsum = xsum + i.position.x
-		ysum = ysum + i.position.y
-		zsum = zsum + i.orientation.z
-
+		if i.position.x > xmin + xrng/3 and i.position.x < xmax - xrng/3 and i.position.y > ymin + yrng/3 and i.position.y < ymax - yrng/3:
+			valids = valids + 1
+			xsum = xsum + i.position.x
+			ysum = ysum + i.position.y
+			sinsum = sinsum + 2*i.orientation.z*i.orientation.w
+			cossum = cossum + i.orientation.w**2 - i.orientation.z**2
+#	print(len(valids))
 	new_pose = Odometry().pose.pose
-	new_pose.position.x = xsum / len(self.particlecloud.poses)
-	new_pose.position.y = ysum / len(self.particlecloud.poses)
-	new_pose.orientation.z = zsum / len(self.particlecloud.poses)
+	new_pose.position.x = xsum / valids
+	new_pose.position.y = ysum / valids
+	new_pose.orientation.w = 1.0
+	new_pose.orientation = rotateQuaternion(new_pose.orientation,math.atan2(sinsum,cossum))
 
+
+#	new_pose.orientation.w = wsum / len(valids)
+#	print(new_pose.orientation.z,new_pose.orientation.w, math.cos(math.asin(new_pose.orientation.z)))
+#	print(new_pose)
+
+#	dummy1 = Odometry().pose.pose.orientation
+#	dummy2 = Quaternion()
+#	dummy1.w = 1.0
+#	dummy2.w = 1.0
+#	dummy1.z = 0.9
+#	dummy1.w = math.cos(math.asin(0.9))
+#	dummy2 = Odometry().pose.pose.orientation
+#	dummy2.z = 0.9
+#	dummy2.w = math.cos(math.asin(0.9))
+#	print(dummy1, dummy2, multiply_quaternions(dummy1,dummy2))
+
+#	print(rotateQuaternion(dummy1, -math.pi/2))
+#	print(getHeading(rotateQuaternion(dummy1, -math.pi/2)))
+#	print(new_pose)
 	return new_pose
 
 
