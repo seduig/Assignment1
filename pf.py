@@ -1,5 +1,6 @@
 #!/usr/bin/python
 from geometry_msgs.msg import Pose, PoseArray, Quaternion
+from sensor_msgs.msg import LaserScan
 from pf_base import PFLocaliserBase
 import math
 import rospy
@@ -13,7 +14,7 @@ import sensor_model
 
 from time import time, sleep
 
-noise = 2.5
+noise = 7
 
 class PFLocaliser(PFLocaliserBase):
        
@@ -22,7 +23,7 @@ class PFLocaliser(PFLocaliserBase):
         super(PFLocaliser, self).__init__()
         
         # ----- Set motion model parameters
-	self.ODOM_ROTATION_NOISE = 0.7 # Odometry model rotation noise
+	self.ODOM_ROTATION_NOISE = 0.65 # Odometry model rotation noise
 	self.ODOM_TRANSLATION_NOISE = 0.4 # Odometry model x axis (forward) noise
 	self.ODOM_DRIFT_NOISE = 0.4 # Odometry model y axis (side-to-side) noise
 
@@ -49,9 +50,9 @@ class PFLocaliser(PFLocaliserBase):
 	base = initialpose.pose.pose
 	for i in range(0,750):
 		particle_array.poses.append(Odometry().pose.pose)
-		particle_array.poses[i].position.x = gauss(base.position.x, 0.4)
-		particle_array.poses[i].position.y = gauss(base.position.y, 0.4)
-		particle_array.poses[i].orientation = rotateQuaternion(base.orientation, gauss(0,0.25))
+		particle_array.poses[i].position.x = gauss(base.position.x, 0.8)
+		particle_array.poses[i].position.y = gauss(base.position.y, 0.8)
+		particle_array.poses[i].orientation = rotateQuaternion(base.orientation, gauss(0,1.3))
 
 	return particle_array
  
@@ -65,27 +66,51 @@ class PFLocaliser(PFLocaliserBase):
             | scan (sensor_msgs.msg.LaserScan): laser scan to use for update
 
          """
-
+	ranges_list = list(scan.ranges)
+	for i in range(0,len(ranges_list)):
+		if math.isnan(ranges_list[i]):
+			ranges_list[i] = 0.0
+	scan.ranges = tuple(ranges_list)
 	global noise
 
 	probs = []
 	for i in range(0,len(self.particlecloud.poses)):
 		probs.append(self.sensor_model.get_weight(scan,self.particlecloud.poses[i])**2)
 
-	if sum(probs)/len(probs) < 28 and max(probs) < 50:
+	if sum(probs)/len(probs) < 28 and max(probs) < 31:
 
 		for i in range(0,len(self.particlecloud.poses)):
-			if probs[i] < 2.8:
+			if probs[i] < 19:
 				self.particlecloud.poses[i].position.x = gauss(self.estimatedpose.pose.pose.position.x,noise)
 				self.particlecloud.poses[i].position.y = gauss(self.estimatedpose.pose.pose.position.y,noise)
+#				self.particlecloud.poses[i].position.x = self.estimatedpose.pose.pose.position.x + noise*(random()*2-1)
+#				self.particlecloud.poses[i].position.y = self.estimatedpose.pose.pose.position.y + noise*(random()*2-1)
+#				self.particlecloud.poses[i].position.x = self.sensor_model.map_width/2.0
+#				self.particlecloud.poses[i].position.y = self.sensor_model.map_height/2.0
+#				self.particlecloud.poses[i].position.x = random()*self.sensor_model.map_width
+#				self.particlecloud.poses[i].position.y = random()*self.sensor_model.map_height
 				self.particlecloud.poses[i].orientation.z = 0.0
 				self.particlecloud.poses[i].orientation.w = 1.0
 				self.particlecloud.poses[i].orientation = rotateQuaternion(self.particlecloud.poses[i].orientation, math.pi*(random()*2 - 1))
 		noise = noise + 1
-
+	elif sum(probs)/len(probs) < 36 and max(probs) < 42:
+		for i in range(0,len(self.particlecloud.poses)):
+			if probs[i] < 11:
+				self.particlecloud.poses[i].position.x = gauss(self.estimatedpose.pose.pose.position.x,noise)
+				self.particlecloud.poses[i].position.y = gauss(self.estimatedpose.pose.pose.position.y,noise)
+#				self.particlecloud.poses[i].position.x = self.estimatedpose.pose.pose.position.x + noise*(random()*2-1)
+#				self.particlecloud.poses[i].position.y = self.estimatedpose.pose.pose.position.y + noise*(random()*2-1)
+#				self.particlecloud.poses[i].position.x = self.sensor_model.map_width/2.0
+#				self.particlecloud.poses[i].position.y = self.sensor_model.map_height/2.0
+#				self.particlecloud.poses[i].position.x = random()*self.sensor_model.map_width
+#				self.particlecloud.poses[i].position.y = random()*self.sensor_model.map_height
+				self.particlecloud.poses[i].orientation.z = 0.0
+				self.particlecloud.poses[i].orientation.w = 1.0
+				self.particlecloud.poses[i].orientation = rotateQuaternion(self.particlecloud.poses[i].orientation, math.pi*(random()*2 - 1))
+		noise = noise + 1
 	else:
 
-		noise = 2.5
+		noise = 7
 		new_particlecloud = PoseArray()
 		for i in range(0,len(self.particlecloud.poses)):
 			benchmark = random()*sum(probs)
@@ -97,7 +122,7 @@ class PFLocaliser(PFLocaliserBase):
 			chosenpose = self.particlecloud.poses[k-1]
 			new_particlecloud.poses.append(Odometry().pose.pose)
 			new_particlecloud.poses[i].position.x = gauss(chosenpose.position.x, 0.04)
-			new_particlecloud.poses[i].position.y = gauss(chosenpose.position.y, 0.04) 
+			new_particlecloud.poses[i].position.y = gauss(chosenpose.position.y, 0.04)
 			new_particlecloud.poses[i].orientation = rotateQuaternion(chosenpose.orientation, gauss(0, 0.03))
 		self.particlecloud = new_particlecloud
 
