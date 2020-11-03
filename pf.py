@@ -14,7 +14,7 @@ import sensor_model
 
 from time import time, sleep
 
-noise = 7
+noise = 7 #will be used to spread out particles over map in kidnapped robot scenario
 
 class PFLocaliser(PFLocaliserBase):
        
@@ -46,12 +46,14 @@ class PFLocaliser(PFLocaliserBase):
             | (geometry_msgs.msg.PoseArray) poses of the particles
         """
 
-	particle_array = PoseArray()
+	particle_array = PoseArray() #start with blank PoseArray for the particle cloud
 	base = initialpose.pose.pose
-	for i in range(0,750):
-		particle_array.poses.append(Odometry().pose.pose)
-		particle_array.poses[i].position.x = gauss(base.position.x, 0.8)
+	for i in range(0,750): #we will generate 750 particles
+		particle_array.poses.append(Odometry().pose.pose) #add new particle
+		#give this particle the x and y position of the initial pose plus a little gaussian noise for each
+		particle_array.poses[i].position.x = gauss(base.position.x, 0.8) 
 		particle_array.poses[i].position.y = gauss(base.position.y, 0.8)
+		#and give it the orientation of the initial pose, again with some gaussian noise
 		particle_array.poses[i].orientation = rotateQuaternion(base.orientation, gauss(0,1.3))
 
 	return particle_array
@@ -66,65 +68,56 @@ class PFLocaliser(PFLocaliserBase):
             | scan (sensor_msgs.msg.LaserScan): laser scan to use for update
 
          """
-	ranges_list = list(scan.ranges)
+	ranges_list = list(scan.ranges) #need to iterate over scan.ranges to edit invalid values, this cannot be done on tuples so convert
 	for i in range(0,len(ranges_list)):
-		if math.isnan(ranges_list[i]):
-			ranges_list[i] = -1.0
-	scan.ranges = tuple(ranges_list)
+		if math.isnan(ranges_list[i]): #check if each value is 'nan', which turns up occasionally on real data scans
+			ranges_list[i] = -1.0 #if it is, replace it with -1.0 so the program can continue without error
+	scan.ranges = tuple(ranges_list) #replace scan.ranges with altered version
 	global noise
 
 	probs = []
-	for i in range(0,len(self.particlecloud.poses)):
+	for i in range(0,len(self.particlecloud.poses)): #find weights of all particles
 		probs.append(self.sensor_model.get_weight(scan,self.particlecloud.poses[i])**2)
+		#weights are squared to increase importance of high weight particles
 
-	if sum(probs)/len(probs) < 28 and max(probs) < 31:
+	if sum(probs)/len(probs) < 28 and max(probs) < 31: #if robot kidnapped:
 
 		for i in range(0,len(self.particlecloud.poses)):
-			if probs[i] < 19:
+			if probs[i] < 19: #replace all low weight particles
+				#with random gaussian positions chosen using the most recent estimated pose as a center
 				self.particlecloud.poses[i].position.x = gauss(self.estimatedpose.pose.pose.position.x,noise)
 				self.particlecloud.poses[i].position.y = gauss(self.estimatedpose.pose.pose.position.y,noise)
-#				self.particlecloud.poses[i].position.x = self.estimatedpose.pose.pose.position.x + noise*(random()*2-1)
-#				self.particlecloud.poses[i].position.y = self.estimatedpose.pose.pose.position.y + noise*(random()*2-1)
-#				self.particlecloud.poses[i].position.x = self.sensor_model.map_width/2.0
-#				self.particlecloud.poses[i].position.y = self.sensor_model.map_height/2.0
-#				self.particlecloud.poses[i].position.x = random()*self.sensor_model.map_width
-#				self.particlecloud.poses[i].position.y = random()*self.sensor_model.map_height
+				#and choose a random orientation for each one
+				self.particlecloud.poses[i].orientation.z = 0.0
+				self.particlecloud.poses[i].orientation.w = 1.0
+				self.particlecloud.poses[i].orientation = rotateQuaternion(self.particlecloud.poses[i].orientation, math.pi*(random()*2 - 1))
+		noise = noise + 1 #increase noise; if robot is found to still be kidnapped on next run the next set of values will be spread 																out more
+	elif sum(probs)/len(probs) < 36 and max(probs) < 42: #if robot *maybe* kidnapped:
+		for i in range(0,len(self.particlecloud.poses)):
+			if probs[i] < 11: #replace only the *very* low weight particles in the same way as above
+				self.particlecloud.poses[i].position.x = gauss(self.estimatedpose.pose.pose.position.x,noise)
+				self.particlecloud.poses[i].position.y = gauss(self.estimatedpose.pose.pose.position.y,noise)
 				self.particlecloud.poses[i].orientation.z = 0.0
 				self.particlecloud.poses[i].orientation.w = 1.0
 				self.particlecloud.poses[i].orientation = rotateQuaternion(self.particlecloud.poses[i].orientation, math.pi*(random()*2 - 1))
 		noise = noise + 1
-	elif sum(probs)/len(probs) < 36 and max(probs) < 42:
-		for i in range(0,len(self.particlecloud.poses)):
-			if probs[i] < 11:
-				self.particlecloud.poses[i].position.x = gauss(self.estimatedpose.pose.pose.position.x,noise)
-				self.particlecloud.poses[i].position.y = gauss(self.estimatedpose.pose.pose.position.y,noise)
-#				self.particlecloud.poses[i].position.x = self.estimatedpose.pose.pose.position.x + noise*(random()*2-1)
-#				self.particlecloud.poses[i].position.y = self.estimatedpose.pose.pose.position.y + noise*(random()*2-1)
-#				self.particlecloud.poses[i].position.x = self.sensor_model.map_width/2.0
-#				self.particlecloud.poses[i].position.y = self.sensor_model.map_height/2.0
-#				self.particlecloud.poses[i].position.x = random()*self.sensor_model.map_width
-#				self.particlecloud.poses[i].position.y = random()*self.sensor_model.map_height
-				self.particlecloud.poses[i].orientation.z = 0.0
-				self.particlecloud.poses[i].orientation.w = 1.0
-				self.particlecloud.poses[i].orientation = rotateQuaternion(self.particlecloud.poses[i].orientation, math.pi*(random()*2 - 1))
-		noise = noise + 1
-	else:
-
-		noise = 7
-		new_particlecloud = PoseArray()
-		for i in range(0,len(self.particlecloud.poses)):
-			benchmark = random()*sum(probs)
-			j = 0
-			k = 0
-			while j < benchmark:
-				j = j + probs[k]
-				k = k + 1
+	else: #if robot not thought to be kidnapped:
+		noise = 7	#reset noise
+		new_particlecloud = PoseArray() #start with a blank PoseArray for the new cloud
+		for i in range(0,len(self.particlecloud.poses)): #stochastic universal sampling
+			benchmark = random()*sum(probs) #choose random number between 0 and sum of weights
+			j = 0 #dummy variable to represent regions; each particle has a region proportional to it's weight
+			k = 0 #dummy variable to count
+			while j < benchmark: #while we have not yet reached the region containing the random value:
+				j = j + probs[k] #iterate to the next region
+				k = k + 1 #consider next region
+			#once we have reached the region containing the random value, choose the particle this region represented
 			chosenpose = self.particlecloud.poses[k-1]
 			new_particlecloud.poses.append(Odometry().pose.pose)
-			new_particlecloud.poses[i].position.x = gauss(chosenpose.position.x, 0.04)
+			new_particlecloud.poses[i].position.x = gauss(chosenpose.position.x, 0.04) #add a little noise
 			new_particlecloud.poses[i].position.y = gauss(chosenpose.position.y, 0.04)
 			new_particlecloud.poses[i].orientation = rotateQuaternion(chosenpose.orientation, gauss(0, 0.03))
-		self.particlecloud = new_particlecloud
+		self.particlecloud = new_particlecloud #replace cloud with new cloud
 
 
 
@@ -145,35 +138,41 @@ class PFLocaliser(PFLocaliserBase):
             | (geometry_msgs.msg.Pose) robot's estimated pose.
          """
 
-	xsum = 0.0
-	ysum = 0.0
-	sinsum = 0.0
-	cossum = 0.0
+	xsum = 0.0 #sum of valid x positions for finding average
+	ysum = 0.0 #same for y
+	sinsum = 0.0 #sum of the sin's of angles found to be valid
+	cossum = 0.0 #same for cos's
 
-	xvals = []
-	yvals = []
-	for i in self.particlecloud.poses:
+	xvals = [] #list containing all x positions
+	yvals = [] #same for y
+	for i in self.particlecloud.poses: #add all x and y positions to these lists
 		xvals.append(i.position.x)
 		yvals.append(i.position.y)
 
-	xvals.sort()
+	xvals.sort() #sort them so we can discard particles with positions in bottom and top quartiles
 	yvals.sort()
 
-	valids = 0
+	valids = 0 #amount of undiscarded particles
 
 
 	for i in self.particlecloud.poses:
 		if i.position.x in xvals[len(xvals)/4:3*len(xvals)/4] and i.position.y in yvals[len(yvals)/4:3*len(yvals)/4]:
+		#if particle's x and y position are each not in the bottom or top quartile, we consider this particle valid
 			valids = valids + 1
 			xsum = xsum + i.position.x
 			ysum = ysum + i.position.y
+			#for an angle d representated by a quaternion x,y,z,w:
+			#z = sin(d/2) and w = cos(d/2) (easy to check), so:
+			#sin(d) = sin(2*d/2) = 2*sin(d/2)*cos(d/2) = 2*z*w
 			sinsum = sinsum + 2*i.orientation.z*i.orientation.w
+			#and cos(d) = cos(2*d/2) = cos(d/2)**2 - sin(d/2)**2 = w**2 - z**2
 			cossum = cossum + i.orientation.w**2 - i.orientation.z**2
 
 	new_pose = Odometry().pose.pose
-	new_pose.position.x = xsum / valids
-	new_pose.position.y = ysum / valids
+	new_pose.position.x = xsum / valids #choose x position of average of valid particles
+	new_pose.position.y = ysum / valids #same for y
 	new_pose.orientation.w = 1.0
+	#atan2 used to find average of angles
 	new_pose.orientation = rotateQuaternion(new_pose.orientation,math.atan2(sinsum,cossum))
 
 	return new_pose
