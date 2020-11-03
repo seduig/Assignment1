@@ -69,7 +69,7 @@ class PFLocaliser(PFLocaliserBase):
 	ranges_list = list(scan.ranges)
 	for i in range(0,len(ranges_list)):
 		if math.isnan(ranges_list[i]):
-			ranges_list[i] = 0.0
+			ranges_list[i] = -1.0
 	scan.ranges = tuple(ranges_list)
 	global noise
 
