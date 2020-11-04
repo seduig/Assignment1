@@ -14,7 +14,6 @@ import sensor_model
 
 from time import time, sleep
 
-noise = 7 #will be used to spread out particles over map in kidnapped robot scenario
 
 class PFLocaliser(PFLocaliserBase):
        
@@ -85,24 +84,23 @@ class PFLocaliser(PFLocaliserBase):
 		for i in range(0,len(self.particlecloud.poses)):
 			if probs[i] < 19: #replace all low weight particles
 				#with random gaussian positions chosen using the most recent estimated pose as a center
-				self.particlecloud.poses[i].position.x = gauss(self.estimatedpose.pose.pose.position.x,noise)
-				self.particlecloud.poses[i].position.y = gauss(self.estimatedpose.pose.pose.position.y,noise)
+				self.particlecloud.poses[i].position.x = gauss(self.estimatedpose.pose.pose.position.x,5)
+				self.particlecloud.poses[i].position.y = gauss(self.estimatedpose.pose.pose.position.y,5)
 				#and choose a random orientation for each one
 				self.particlecloud.poses[i].orientation.z = 0.0
 				self.particlecloud.poses[i].orientation.w = 1.0
 				self.particlecloud.poses[i].orientation = rotateQuaternion(self.particlecloud.poses[i].orientation, math.pi*(random()*2 - 1))
-		noise = noise + 1 #increase noise; if robot is found to still be kidnapped on next run the next set of values will be spread 																out more
+		 		
 	elif sum(probs)/len(probs) < 36 and max(probs) < 42: #if robot *maybe* kidnapped:
 		for i in range(0,len(self.particlecloud.poses)):
 			if probs[i] < 11: #replace only the *very* low weight particles in the same way as above
-				self.particlecloud.poses[i].position.x = gauss(self.estimatedpose.pose.pose.position.x,noise)
-				self.particlecloud.poses[i].position.y = gauss(self.estimatedpose.pose.pose.position.y,noise)
+				self.particlecloud.poses[i].position.x = gauss(self.estimatedpose.pose.pose.position.x,5)
+				self.particlecloud.poses[i].position.y = gauss(self.estimatedpose.pose.pose.position.y,5)
 				self.particlecloud.poses[i].orientation.z = 0.0
 				self.particlecloud.poses[i].orientation.w = 1.0
 				self.particlecloud.poses[i].orientation = rotateQuaternion(self.particlecloud.poses[i].orientation, math.pi*(random()*2 - 1))
-		noise = noise + 1
+
 	else: #if robot not thought to be kidnapped:
-		noise = 7	#reset noise
 		new_particlecloud = PoseArray() #start with a blank PoseArray for the new cloud
 		for i in range(0,len(self.particlecloud.poses)): #stochastic universal sampling
 			benchmark = random()*sum(probs) #choose random number between 0 and sum of weights
